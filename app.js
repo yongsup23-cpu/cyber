@@ -687,8 +687,28 @@
     const hs = ray.intersectObjects(pickables, false);
     return hs.length ? hs[0].object : null;
   }
+  /* click on empty floor / wall: walk forward toward that point */
+  function walkToward(cx, cy) {
+    if (busy) return;
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const d = ray.ray.direction, hl = Math.hypot(d.x, d.z);
+    if (hl < 1e-3) return;
+    const hx = d.x / hl, hz = d.z / hl;
+    let dist = d.y < -0.02 ? ((0 - EYE) / d.y) * hl : 4;
+    dist = Math.max(0.8, Math.min(dist, 7));
+    const m = 0.9;
+    const x = Math.max(-HX + m, Math.min(HX - m, cam.x + hx * dist));
+    const z = Math.max(-HZ + m, Math.min(HZ - m, cam.z + hz * dist));
+    const yaw = Math.atan2(-hx, -hz);
+    const moved = Math.hypot(x - cam.x, z - cam.z);
+    moveTo({ x, z, yaw, pitch: Math.max(-0.12, Math.min(0.12, cam.pitch * 0.5)) }, false, Math.min(1400, 450 + moved * 170));
+    looked = true;
+    setTimeout(refreshHiRes, 900);
+  }
   function pick(cx, cy) {
-    const o = hit(cx, cy); if (!o) return;
+    const o = hit(cx, cy); if (!o) { walkToward(cx, cy); return; }
     if (o.userData.door) { walkThrough(o.userData.door); return; }
     if (o.userData.idx !== undefined) {
       const si = stops.findIndex((s) => s.kind === "photo" && s.idx === o.userData.idx);
@@ -701,7 +721,7 @@
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener("pointermove", (e) => {
-    if (!drag) { canvas.style.cursor = hit(e.clientX, e.clientY) ? "pointer" : "grab"; return; }
+    if (!drag) { canvas.style.cursor = hit(e.clientX, e.clientY) ? "pointer" : "crosshair"; return; }
     const dx = e.clientX - drag.lx, dy = e.clientY - drag.ly;
     drag.moved = Math.max(drag.moved, Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0));
     if (drag.moved > 6) {
@@ -730,7 +750,8 @@
   window.addEventListener("keydown", (e) => {
     if (!$("lb").hidden) { if (e.key === "Escape") closeLB(); return; }
     if (!$("intro").hidden) return;
-    if (e.key === "ArrowRight") step(1);
+    if (e.key === "ArrowUp") { const r = canvas.getBoundingClientRect(); walkToward(r.left + r.width / 2, r.top + r.height * 0.62); }
+    else if (e.key === "ArrowRight") step(1);
     else if (e.key === "ArrowLeft") step(-1);
     else if (e.key === "Enter") { const s = stops[cur]; if (s.kind === "door") walkThrough(s.target); else if (s.kind === "photo") openLB(s); }
     else if (e.key === "Escape" && mode === "hall") go(buildLobby);
